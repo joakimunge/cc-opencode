@@ -1,0 +1,4 @@
+# written by Claude Code when it loads a plugin (the API's types for the editor)
+.claude-plugin/types/
+.DS_Store
+node_modules/

@@ -1,0 +1,17 @@
+{
+  "name": "opencode-look",
+  "description": "Claude Code laid out like OpenCode, in your own theme's colours, with an OpenCode-style side pane.",
+  "owner": { "name": "Joakim Unge" },
+  "plugins": [
+    {
+      "name": "opencode-look",
+      "source": "./plugins/opencode-look",
+      "description": "Messages with an accent bar, coloured Markdown, padding and an OpenCode-style footer, all in your theme's colours."
+    },
+    {
+      "name": "toolbox",
+      "source": "./plugins/toolbox",
+      "description": "An OpenCode-style side pane: context and cost, your Pulse timer and next meeting, MCP servers and skills."
+    }
+  ]
+}

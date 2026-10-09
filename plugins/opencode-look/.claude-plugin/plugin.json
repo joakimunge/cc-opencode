@@ -1,0 +1,8 @@
+{
+  "name": "opencode-look",
+  "version": "0.1.0",
+  "description": "Lays Claude Code out like OpenCode, in your own theme's colours: messages with an accent bar, coloured Markdown, padding, and an OpenCode-style footer.",
+  "author": {
+    "name": "Joakim Unge"
+  }
+}
