@@ -14,14 +14,15 @@ Two plugins, install either or both:
 From GitHub, typed at the Claude Code prompt:
 
 ```
-/plugin install opencode-look --marketplace <owner>/opencode-look
-/plugin install toolbox --marketplace <owner>/opencode-look
+/plugin install opencode-look --marketplace joakimunge/cc-opencode
+/plugin install toolbox --marketplace joakimunge/cc-opencode
 ```
 
 From a local clone:
 
 ```sh
-claude plugin marketplace add ~/dev/personal/opencode-look
+git clone git@github.com:joakimunge/cc-opencode.git
+claude plugin marketplace add ./cc-opencode
 claude plugin install opencode-look@opencode-look
 claude plugin install toolbox@opencode-look
 ```
