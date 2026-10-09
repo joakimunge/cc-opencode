@@ -22,6 +22,8 @@ import {
 
 const PANE = 'toolbox'
 const WIDTH = 44
+/** the narrowest terminal Claude Code docks a pane beside the transcript in; below it the pane would stack above the prompt */
+const DOCK_COLUMNS = 110
 const EVERY_MS = 2 * 60 * 1000
 /** how long after the session starts the first MCP check waits */
 const MCP_DELAY_MS = 15_000
@@ -376,6 +378,25 @@ async function readUsage($: EngineInterface) {
 
 const refreshAll = ($: EngineInterface) => Promise.all([refreshMcp($), refreshSkills($), readWorkday($)])
 
+const open = ($: EngineInterface) => $.ui.open({ id: PANE, title: 'Toolbox', columns: WIDTH })
+
+let hiding = false
+
+/** take the pane off a terminal too narrow to dock it: closed, then opened again by the plugin (not the person), so it
+ *  waits undrawn and docks again by itself once the terminal is wide enough */
+async function hide($: EngineInterface) {
+  if (hiding) return
+  hiding = true
+  try {
+    await $.ui.close({ id: PANE })
+    await open($)
+  } catch {
+    // the session ended or the module reloaded
+  } finally {
+    hiding = false
+  }
+}
+
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     cwd = e.cwd
@@ -384,7 +405,7 @@ export const register: Register = (on) => {
     void readUsage($)
     void $.session.version().then((v) => update($, version, () => v.base ?? v.version)).catch(() => {})
     await $.command.register({ name: 'toolbox', description: 'Show your workday, MCP servers and installed skills in a side pane (refresh: check now · close: close it)' })
-    void $.ui.open({ id: PANE, title: 'Toolbox', columns: WIDTH })
+    void open($)
     // `claude mcp list` connects to every server again: wait until the session's own connections are done
     await update($, checking, () => true)
     void $.clock.sleep(MCP_DELAY_MS).then(() => refreshMcp($)).catch(() => {})
@@ -405,15 +426,24 @@ export const register: Register = (on) => {
       await $.ui.close({ id: PANE })
       return { text: 'Toolbox pane closed. /toolbox opens it again.' }
     }
-    const opened = await $.ui.open({ id: PANE, title: 'Toolbox', columns: WIDTH })
+    const opened = await open($)
     if (e.args.trim() === 'refresh') {
       void refreshAll($)
       return { text: 'Toolbox: checking your MCP servers and skills.' }
+    }
+    if (e.presentation.isFullscreen && e.presentation.columns < DOCK_COLUMNS) {
+      return { text: `Toolbox: widen the terminal to ${DOCK_COLUMNS} columns to see the pane.` }
     }
     return { text: opened.isPlaced ? 'Toolbox pane opened.' : 'Toolbox: widen the terminal to see the pane.' }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    // in fullscreen, inline means the terminal got too narrow to dock the pane: hide it rather than stack it
+    if (e.surface === 'terminal' && e.props.placement === 'inline' && e.viewport?.isFullscreen && e.viewport.columns < DOCK_COLUMNS) {
+      void hide($)
+      const { Box } = $.ui.resolve(e)
+      return <Box />
+    }
     const elements = $.ui.resolve(e)
     const { Box, Text, Button } = elements
     const workday = await workdaySection($, elements)

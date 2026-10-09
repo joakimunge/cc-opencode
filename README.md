@@ -62,6 +62,7 @@ Inside tmux, Claude Code limits itself to 256 colours, which turns dark purples 
 ## The side pane
 
 - Opens by itself when a session starts (from about 110 columns wide in fullscreen).
+- Hides when the terminal gets narrower than 110 columns, rather than stacking above the prompt, and comes back when you widen it.
 - `/toolbox` opens it again · `/toolbox refresh` reads everything now · `/toolbox close` closes it · `r` refreshes · `s` stops the Pulse timer (it asks first).
 - **Pulse** needs an MCP server named `pulse`. **Next up** needs the *claude.ai Google Calendar* connector; until it's logged in (`/mcp`) the pane says so.
 - MCP status comes from `claude mcp list`, 15 s after the session starts and every 2 minutes after.

@@ -140,3 +140,56 @@ test('Context shows tokens, % used and $ spent as the engine measures them', asy
   expect(await ui.find({ text: /^6% used$/ })).toBeDefined()
   expect(await ui.find({ text: /^\$0\.32 spent$/ })).toBeDefined()
 })
+
+test('hides the pane instead of stacking it when the terminal is too narrow to dock it', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const calls: string[] = []
+  on('ui.close', ($, e) => {
+    calls.push(`close ${e.id}`)
+    return { value: undefined }
+  })
+  on('ui.open', ($, e) => {
+    calls.push(`open ${e.id}`)
+    return { value: { isPlaced: false, reason: 'narrow' } }
+  })
+
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, placement: 'inline' }, viewport: { columns: 90, rows: 40, isFullscreen: true } })
+  await clock.settle()
+  expect(calls).toEqual(['close toolbox', 'open toolbox'])
+  expect(await ui.find({ text: /^Context$/ })).toBeUndefined()
+})
+
+test('keeps drawing the pane docked', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const closed: string[] = []
+  on('ui.close', ($, e) => {
+    closed.push(e.id)
+    return { value: undefined }
+  })
+
+  const ui = await $.ui.mount({ ...PANE, viewport: { columns: 160, rows: 40, isFullscreen: true } })
+  await clock.settle()
+  expect(closed).toEqual([])
+  expect(await ui.find({ text: /^Context$/ })).toBeDefined()
+})
+
+test('keeps drawing the pane above the prompt on the main screen, which never docks', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const closed: string[] = []
+  on('ui.close', ($, e) => {
+    closed.push(e.id)
+    return { value: undefined }
+  })
+
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, placement: 'inline' }, viewport: { columns: 90, rows: 40, isFullscreen: false } })
+  await clock.settle()
+  expect(closed).toEqual([])
+  expect(await ui.find({ text: /^Context$/ })).toBeDefined()
+})
+
+test('/toolbox on a narrow terminal says to widen it', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const r = await $.command.run({ command: 'toolbox', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 90 } })
+  expect((r as { text?: string }).text).toContain('widen the terminal to 110 columns')
+})
