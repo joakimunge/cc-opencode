@@ -1,7 +1,8 @@
 // OpenCode look: Claude Code laid out the way OpenCode lays itself out, in the colours of whatever theme you use.
 //  - colours are roles read from your theme (/theme), never fixed values, so the look fits any theme; a theme that
 //    sets these keys to OpenCode's Synthwave '84 colours (opencode.json) gives OpenCode's look exactly
-//  - your messages: Claude Code's own message background with an accent bar on the left and room around the text
+//  - your messages: a block in the theme's message background, inside the gutter, with an accent bar along its left
+//    edge and room around the text
 //  - replies (and the engine's short summaries of them): Markdown in colour — **bold**, *italics*, `code`,
 //    list numbers and headings each in their role's colour; code blocks and tables are left to the engine's Markdown
 //  - the end of a turn: "▣  Done · Opus 5.5 · 27.5s"
@@ -25,13 +26,19 @@ const CODE = 'success'
 const MARKER = 'suggestion'
 /** quiet text (lavender) */
 const MUTED = 'inactive'
+/** the block behind your messages (dark violet) */
+const BLOCK = 'userMessageBackground'
+/** the bar beside your messages: a left three-eighths block, so it sits flush with the block's left edge */
+const BAR = '▍'
 const BAR_ROWS = 400
 /** where a message came from when you typed it (or sent it from another device) */
 const TYPED = new Set(['composer', 'bridge', 'unclassified'])
 /** columns of empty space at the left and right edge */
 const GUTTER = 3
+/** columns between the bar and your text, and after your text */
+const ROOM = 2
 /** where text starts: the gutter, the bar, then room after it */
-const TEXT = GUTTER + 3
+const TEXT = GUTTER + 1 + ROOM
 
 type Elements = ReturnType<EngineInterface['ui']['resolve']>
 
@@ -126,12 +133,15 @@ export const register: Register = (on) => {
     if (!p.isExpanded && p.text.split('\n').length > 40) return next(e)
     const { Box, Text } = $.ui.resolve(e)
     return (
-      // the block's colour is Claude Code's own: it wraps every message in the theme's userMessageBackground
-      <Box flexDirection="column" position="relative" paddingLeft={TEXT} paddingRight={GUTTER} paddingY={1}>
-        <Box position="absolute" top={0} left={0} bottom={0} width={1} overflow="hidden" flexDirection="column">
-          <Text color={ACCENT}>{Array.from({ length: BAR_ROWS }, () => '┃').join('\n')}</Text>
+      // the block is painted here: the engine no longer paints the message background behind a hook's tree;
+      // a row of space above and below sets it apart from what comes before and after
+      <Box flexDirection="column" paddingLeft={GUTTER} paddingRight={GUTTER} paddingY={1}>
+        <Box key="block" flexDirection="column" position="relative" backgroundColor={BLOCK} paddingLeft={TEXT - GUTTER} paddingRight={ROOM} paddingY={1}>
+          <Box position="absolute" top={0} left={0} bottom={0} width={1} overflow="hidden" flexDirection="column">
+            <Text color={ACCENT}>{Array.from({ length: BAR_ROWS }, () => BAR).join('\n')}</Text>
+          </Box>
+          <Text wrap="wrap">{p.text}</Text>
         </Box>
-        <Text wrap="wrap">{p.text}</Text>
       </Box>
     )
   })

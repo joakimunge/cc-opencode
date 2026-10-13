@@ -69,16 +69,19 @@ test('a reply draws bold orange, code green, numbers cyan', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /^1\. $/ })).toMatchObject({ props: { color: 'suggestion' } })
 })
 
-test('your message gets the dark block and pink bar', async ($, on) => {
+test('your message gets the dark block and pink bar, inside the gutter', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   const ui = await $.ui.mount({
     plugin: 'opencode-look', surface: 'terminal', component: 'UserMessage',
     props: { text: 'test', origin: { kind: 'composer' }, isExpanded: false },
   })
-  expect(await ui.drawn()).toMatchObject({ type: 'Box', props: { paddingY: 1, paddingLeft: 6 } })
+  expect(await ui.drawn()).toMatchObject({ type: 'Box', props: { paddingLeft: 3, paddingRight: 3, paddingY: 1 } })
   expect(((await ui.drawn()) as { props?: Record<string, unknown> }).props?.backgroundColor).toBeUndefined()
+  expect(await ui.find({ key: 'block' })).toMatchObject({
+    props: { backgroundColor: 'userMessageBackground', paddingLeft: 3, paddingRight: 2, paddingY: 1 },
+  })
   expect(await ui.find({ type: 'Text', text: /^test$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^┃\n┃/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^▍\n▍/ })).toBeDefined()
 })
 
 test('the turn ends with ▣ word · model · time, the prompt hint with model and effort', async ($, on) => {
