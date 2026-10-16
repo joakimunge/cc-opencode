@@ -51,6 +51,16 @@ cp themes/opencode.json ~/.claude/themes/
 
 Then pick **OpenCode (Synthwave '84)** in `/theme`, and set your terminal's background to `#262335`. Claude Code draws on the terminal's own background.
 
+### Prefer something quieter?
+
+`themes/opencode-graphite.json` keeps the same pink, cyan and orange accents on muted greys instead of purples:
+
+```sh
+cp themes/opencode-graphite.json ~/.claude/themes/
+```
+
+Pick **OpenCode (Graphite)** in `/theme`, and set your terminal's background to `#1f1f22`, a soft charcoal rather than black.
+
 ### Using tmux?
 
 Inside tmux, Claude Code limits itself to 256 colours, which turns dark purples into flat grey. Add this to the `env` block of `~/.claude/settings.json` and restart:
