@@ -1,5 +1,5 @@
 // Toolbox: one side pane laid out like OpenCode's sidebar: the folder as a title, the context window (tokens, % used,
-// $ spent), your workday, your MCP servers (and whether each is connected), your skills, and the folder and
+// $ spent), your workday, your MCP servers (and whether each is connected), your open Claude sessions, and the folder and
 // Claude Code's version pinned to the bottom.
 //  - Context: read when the session starts, then each time the engine measures usage again (session.measure)
 //  - Workday: your Pulse timer (every minute) and today's hours (every 5 minutes); Stop (s) asks, then logs the time.
@@ -7,14 +7,15 @@
 //    is logged in (/mcp) the pane says so, and picks it up on the next check. Countdowns tick every 30 s
 //  - MCP status comes from `claude mcp list`: checked 15 s after the session starts (once the session's own
 //    connections are done), every 2 minutes, and on Refresh (r)
-//  - skills are read from their folders: yours (~/.claude/skills), claude.ai's synced ones, the project's
-//    (.claude/skills) and every installed plugin's (skills/ and commands/)
+//  - open Claude sessions come from ~/.claude/sessions (one file per running Claude Code), each checked against `ps`
+//    so a file left behind by a closed session doesn't count: read every 15 s
 //  - Refresh (r) reads everything now; /toolbox opens the pane again after you close it; /toolbox refresh checks now;
 //    /toolbox close closes it
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import type { CalEvent, CalState, Hours, McpServer, McpStatus, PulseTimer, Skill, SkillGroup, Usage } from '../types'
-import { ago, parseMcpList, parseSkill, sortServers } from './data'
+import type { CalEvent, CalState, ClaudeSession, Hours, McpServer, McpStatus, PulseTimer, Usage } from '../types'
+import { ago, parseMcpList, sortServers } from './data'
+import { age, openSessions, parseSession, parseStarts } from './sessions-data'
 import {
   commas, countdown, duration, hours, localDate, money, parseEvents, parseHours, parseTimer, payload, pickListTool, splitPath,
   textOf, upcoming, when,
@@ -27,12 +28,15 @@ const DOCK_COLUMNS = 110
 const EVERY_MS = 2 * 60 * 1000
 /** how long after the session starts the first MCP check waits */
 const MCP_DELAY_MS = 15_000
+const SESSIONS_MS = 15_000
 
 const servers = atom({ plugin: 'toolbox', key: 'servers' } as const, [] as McpServer[])
 const mcpError = atom({ plugin: 'toolbox', key: 'mcpError' } as const, '')
 const checkedAt = atom({ plugin: 'toolbox', key: 'checkedAt' } as const, 0)
 const checking = atom({ plugin: 'toolbox', key: 'checking' } as const, false)
-const skills = atom({ plugin: 'toolbox', key: 'skills' } as const, [] as SkillGroup[])
+const sessions = atom({ plugin: 'toolbox', key: 'sessions' } as const, [] as ClaudeSession[])
+const sessionsError = atom({ plugin: 'toolbox', key: 'sessionsError' } as const, '')
+const selfId = atom({ plugin: 'toolbox', key: 'selfId' } as const, '')
 const usage = atom({ plugin: 'toolbox', key: 'usage' } as const, null as Usage | null)
 const folder = atom({ plugin: 'toolbox', key: 'cwd' } as const, '')
 const version = atom({ plugin: 'toolbox', key: 'version' } as const, '')
@@ -66,73 +70,42 @@ async function refreshMcp($: EngineInterface) {
   }
 }
 
-async function dirs($: EngineInterface, path: string): Promise<string[]> {
+// --- Sessions ---
+
+let readingSessions = false
+
+/** the open Claude sessions: every ~/.claude/sessions/<pid>.json whose process is still running */
+async function refreshSessions($: EngineInterface) {
+  if (readingSessions) return
+  readingSessions = true
   try {
-    const entries = await $.fs.list(path)
-    return entries.filter((x) => x.kind === 'dir' && !x.name.startsWith('.')).map((x) => x.name).sort()
-  } catch {
-    return []
-  }
-}
-
-async function files($: EngineInterface, path: string, suffix: string): Promise<string[]> {
-  try {
-    const entries = await $.fs.list(path)
-    return entries.filter((x) => x.kind === 'file' && x.name.endsWith(suffix)).map((x) => x.name).sort()
-  } catch {
-    return []
-  }
-}
-
-async function skill($: EngineInterface, file: string, name: string): Promise<Skill | null> {
-  try {
-    return parseSkill(await $.fs.read(file), name)
-  } catch {
-    return null
-  }
-}
-
-/** every SKILL.md one level under `root` */
-async function skillsIn($: EngineInterface, root: string, skip: string[] = []): Promise<Skill[]> {
-  const found = await Promise.all(
-    (await dirs($, root)).filter((d) => !skip.includes(d)).map((d) => skill($, `${root}/${d}/SKILL.md`, d)),
-  )
-  return found.filter((x): x is Skill => x !== null)
-}
-
-async function refreshSkills($: EngineInterface) {
-  const home = (await $.env.get('HOME')) ?? ''
-  const groups: SkillGroup[] = []
-  const add = (label: string, list: Skill[]) => {
-    if (list.length) groups.push({ label, skills: [...list].sort((a, b) => a.name.localeCompare(b.name)) })
-  }
-  if (home) {
-    add('Yours', await skillsIn($, `${home}/.claude/skills`, ['synced']))
-    const synced: Skill[] = []
-    for (const bucket of await dirs($, `${home}/.claude/skills/synced`)) synced.push(...(await skillsIn($, `${home}/.claude/skills/synced/${bucket}`)))
-    add('claude.ai', synced)
-  }
-  if (cwd) add('This project', await skillsIn($, `${cwd}/.claude/skills`))
-  if (home) {
+    const dir = `${home || (await $.env.get('HOME')) || ''}/.claude/sessions`
+    let names: string[] = []
     try {
-      const installed = JSON.parse(await $.fs.read(`${home}/.claude/plugins/installed_plugins.json`)) as {
-        plugins?: Record<string, { installPath?: string }[]>
-      }
-      for (const [id, installs] of Object.entries(installed.plugins ?? {})) {
-        const path = installs[0]?.installPath
-        if (!path) continue
-        const list = await skillsIn($, `${path}/skills`)
-        for (const f of await files($, `${path}/commands`, '.md')) {
-          const s = await skill($, `${path}/commands/${f}`, f.replace(/\.md$/, ''))
-          if (s) list.push(s)
-        }
-        add(`Plugin · ${id.split('@')[0]}`, list)
-      }
+      names = (await $.fs.list(dir)).filter((x) => x.kind === 'file' && /^\d+\.json$/.test(x.name)).map((x) => x.name)
     } catch {
-      // no plugins installed
+      // no sessions folder yet
     }
+    const found = (
+      await Promise.all(names.map((n) => $.fs.read(`${dir}/${n}`).then((t) => parseSession(String(t)), () => null)))
+    ).filter((x): x is ClaudeSession => x !== null)
+    let starts = new Map<number, string>()
+    if (found.length) {
+      // procStart is ps's own lstart in UTC; ps exits 1 when a pid is gone, and still lists the rest
+      const run = await $.process.run(['/bin/ps', '-o', 'pid=,lstart=', '-p', found.map((x) => x.pid).join(',')], {
+        env: { TZ: 'UTC' }, timeoutMs: 10_000,
+      })
+      starts = parseStarts(run.stdout)
+    }
+    const list = openSessions(found, starts)
+    const before = await read($, sessions)
+    if (JSON.stringify(before) !== JSON.stringify(list)) await update($, sessions, () => list)
+    await update($, sessionsError, () => '')
+  } catch (err) {
+    await update($, sessionsError, () => `couldn't check sessions (${err instanceof Error ? err.message : String(err)})`)
+  } finally {
+    readingSessions = false
   }
-  await update($, skills, () => groups)
 }
 
 // --- Workday ---
@@ -376,7 +349,7 @@ async function readUsage($: EngineInterface) {
   }
 }
 
-const refreshAll = ($: EngineInterface) => Promise.all([refreshMcp($), refreshSkills($), readWorkday($)])
+const refreshAll = ($: EngineInterface) => Promise.all([refreshMcp($), refreshSessions($), readWorkday($)])
 
 const open = ($: EngineInterface) => $.ui.open({ id: PANE, title: 'Toolbox', columns: WIDTH })
 
@@ -404,12 +377,14 @@ export const register: Register = (on) => {
     await update($, folder, () => e.cwd)
     void readUsage($)
     void $.session.version().then((v) => update($, version, () => v.base ?? v.version)).catch(() => {})
-    await $.command.register({ name: 'toolbox', description: 'Show your workday, MCP servers and installed skills in a side pane (refresh: check now · close: close it)' })
+    await $.command.register({ name: 'toolbox', description: 'Show your workday, MCP servers and open Claude sessions in a side pane (refresh: check now · close: close it)' })
     void open($)
     // `claude mcp list` connects to every server again: wait until the session's own connections are done
     await update($, checking, () => true)
     void $.clock.sleep(MCP_DELAY_MS).then(() => refreshMcp($)).catch(() => {})
-    void refreshSkills($)
+    void $.session.id().then((id) => update($, selfId, () => id)).catch(() => {})
+    void refreshSessions($)
+    $.clock.every(SESSIONS_MS, () => void refreshSessions($))
     startWorkday($)
     $.clock.every(EVERY_MS, () => void refreshMcp($))
     return next(e)
@@ -429,7 +404,7 @@ export const register: Register = (on) => {
     const opened = await open($)
     if (e.args.trim() === 'refresh') {
       void refreshAll($)
-      return { text: 'Toolbox: checking your MCP servers and skills.' }
+      return { text: 'Toolbox: checking your MCP servers and sessions.' }
     }
     if (e.presentation.isFullscreen && e.presentation.columns < DOCK_COLUMNS) {
       return { text: `Toolbox: widen the terminal to ${DOCK_COLUMNS} columns to see the pane.` }
@@ -451,14 +426,15 @@ export const register: Register = (on) => {
     const error = await read($, mcpError)
     const at = await read($, checkedAt)
     const isChecking = await read($, checking)
-    const groups = await read($, skills)
+    const open = await read($, sessions)
+    const sErr = await read($, sessionsError)
+    const self = await read($, selfId)
     const ctx = await read($, usage)
     const where = splitPath((await read($, folder)) || cwd, home)
     const ver = await read($, version)
     const now = await $.clock.now()
     const shown = list.filter((s) => s.status === 'connected' || s.status === 'failed')
     const login = list.filter((s) => s.status === 'auth' || s.status === 'pending')
-    const total = groups.reduce((n, g) => n + g.skills.length, 0)
 
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1} minHeight={e.props.scroll.bodyRows}>
@@ -501,11 +477,14 @@ export const register: Register = (on) => {
         </Box>
 
         <Box flexDirection="column" marginTop={1}>
-          <Text bold>Skills <Text color="inactive">{total}</Text></Text>
-          {groups.length === 0 ? <Text color="inactive">none found</Text> : null}
-          {groups.map((g) => (
-            <Text key={g.label} wrap="wrap">
-              {g.label.replace(/^Plugin · /, '')} <Text color="inactive">{g.skills.map((s) => s.name).join(' · ')}</Text>
+          <Text bold>Sessions <Text color="inactive">{open.length || ''}</Text></Text>
+          {!open.length && !sErr ? <Text color="inactive">reading…</Text> : null}
+          {sErr ? <Text wrap="wrap"><Text color="error">● </Text><Text color="inverseText" backgroundColor="inactive">{sErr}</Text></Text> : null}
+          {open.map((s) => (
+            <Text key={s.sessionId} wrap="truncate-end">
+              <Text color={s.status === 'busy' ? 'success' : s.status === 'idle' ? 'inactive' : 'warning'}>{s.status === 'idle' ? '○' : '●'} </Text>
+              <Text bold={s.sessionId === self}>{s.name || splitPath(s.cwd, home).name || String(s.pid)}</Text>
+              <Text color="inactive"> {s.status} {age(now - s.since)}{s.kind === 'bg' ? ' · bg' : ''}</Text>
             </Text>
           ))}
         </Box>

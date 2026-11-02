@@ -193,3 +193,44 @@ test('/toolbox on a narrow terminal says to widen it', async ($, on) => {
   const r = await $.command.run({ command: 'toolbox', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 90 } })
   expect((r as { text?: string }).text).toContain('widen the terminal to 110 columns')
 })
+
+test('lists the open Claude sessions, working ones first, and skips a file whose process is gone', async ($, on) => {
+  const now = new Date(2026, 10, 2, 17, 0).getTime()
+  mock.clock(on, { now })
+  mock.env(on, { HOME: '/home/j' })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('mcp.call', () => ({ deny: 'no server named "pulse"' }))
+  on('tool.list', () => ({ value: [] }))
+  const file = (pid: number, name: string, status: string, minsAgo: number) => JSON.stringify({
+    pid, sessionId: `id-${pid}`, name, cwd: `/home/j/dev/${name}`, status, kind: 'interactive',
+    procStart: `Mon Nov  2 1${pid % 10}:00:00 2026`, startedAt: now - 3_600_000, statusUpdatedAt: now - minsAgo * 60_000,
+  })
+  const files: Record<string, string> = {
+    '11.json': file(11, 'tech-forward-65', 'idle', 5),
+    '12.json': file(12, 'boneo-ai-2a', 'busy', 1),
+    '13.json': file(13, 'closed-one', 'idle', 2),
+    '14.json': file(14, 'reused-pid', 'idle', 2),
+  }
+  on('fs.list', ($, e) => (e.path === '/home/j/.claude/sessions'
+    ? { value: Object.keys(files).map((name) => ({ name, kind: 'file' as const, size: 600, mtimeMs: now, isLink: false })) }
+    : { deny: 'no such folder' }))
+  on('fs.read', ($, e) => {
+    const text = files[e.path.split('/').pop() ?? '']
+    return text ? { value: text } : { deny: 'no such file' }
+  })
+  on('process.run', ($, e) => {
+    // 13 has exited; 14's pid now belongs to a process that started later
+    const stdout = e.argv[0] === '/bin/ps' ? '   11 Mon Nov  2 11:00:00 2026\n   12 Mon Nov  2 12:00:00 2026\n   14 Mon Nov  2 16:30:00 2026\n' : ''
+    return { value: { exitCode: 1, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  const ui = await $.ui.mount(PANE)
+  await $.command.run({ command: 'toolbox', args: 'refresh', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } })
+  const busy = await ui.find({ text: /boneo-ai-2a/ })
+  const idle = await ui.find({ text: /tech-forward-65/ })
+  expect(busy).toBeDefined()
+  expect(idle).toBeDefined()
+  expect(await ui.find({ text: /busy 1 min/ })).toBeDefined()
+  expect(await ui.find({ text: /closed-one/ })).toBeUndefined()
+  expect(await ui.find({ text: /reused-pid/ })).toBeUndefined()
+})

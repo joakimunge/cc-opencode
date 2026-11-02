@@ -11,10 +11,24 @@ export type McpServer = {
   detail: string
 }
 
-export type Skill = { name: string; description: string }
-
-/** Skills from one place: your own, the project's, claude.ai's, one plugin's. */
-export type SkillGroup = { label: string; skills: Skill[] }
+/** One open Claude Code session, from ~/.claude/sessions/<pid>.json. */
+export type ClaudeSession = {
+  pid: number
+  sessionId: string
+  /** the session's name: "tech-forward-65", "Apple TV app ideas" */
+  name: string
+  cwd: string
+  /** "busy", "idle", or whatever else Claude Code writes there */
+  status: string
+  /** "interactive", or "bg" for a background session */
+  kind: string
+  /** the process's start time as ps prints it, in UTC */
+  procStart: string
+  /** ms since the epoch the session started */
+  startedAt: number
+  /** ms since the epoch its status last changed */
+  since: number
+}
 
 /** The Pulse stopwatch, as timer_status reports it. */
 export type PulseTimer = {
@@ -48,7 +62,11 @@ declare module 'claude-code' {
       /** ms since the epoch of the last finished check, 0 before the first */
       checkedAt: number
       checking: boolean
-      skills: SkillGroup[]
+      sessions: ClaudeSession[]
+      /** why the last sessions read failed, '' when it didn't */
+      sessionsError: string
+      /** this session's id, to mark its row */
+      selfId: string
       timer: PulseTimer | null
       hours: Hours | null
       /** why the last Pulse read failed, '' when it didn't */

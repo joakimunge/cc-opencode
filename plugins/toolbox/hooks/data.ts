@@ -1,5 +1,5 @@
 // Reading what the pane shows. Pure: no engine calls, so the tests run it directly.
-import type { McpServer, McpStatus, Skill } from '../types'
+import type { McpServer, McpStatus } from '../types'
 
 /** The servers in `claude mcp list` output: lines of `<name>: <url or command> - <mark> <status>`. */
 export function parseMcpList(stdout: string): McpServer[] {
@@ -39,16 +39,6 @@ const ORDER: Record<McpStatus, number> = { connected: 0, auth: 1, failed: 2, pen
 /** Connected first, then needs-login, failed, pending; by name within each. */
 export function sortServers(servers: McpServer[]): McpServer[] {
   return [...servers].sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.name.localeCompare(b.name))
-}
-
-/** A skill's `name` and `description` from the front matter of its SKILL.md (or a command's .md). */
-export function parseSkill(text: string, fallbackName: string): Skill {
-  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? ''
-  const field = (key: string) => {
-    const m = new RegExp(`^${key}:\\s*(.*)$`, 'm').exec(fm)
-    return (m?.[1] ?? '').trim().replace(/^["']|["']$/g, '')
-  }
-  return { name: field('name') || fallbackName, description: field('description') }
 }
 
 /** "just now", "3 min ago", "2 h ago" */

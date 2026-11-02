@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { ago, parseMcpList, parseSkill, sortServers, statusOf } from './data'
+import { ago, parseMcpList, sortServers, statusOf } from './data'
 
 const SAMPLE = `Checking MCP server health…
 
@@ -36,12 +36,6 @@ test('status words', () => {
 
 test('ignores lines that are not servers', () => {
   expect(parseMcpList('Checking MCP server health…\n\nNo MCP servers configured. Use `claude mcp add`.\n')).toEqual([])
-})
-
-test('reads a skill front matter', () => {
-  const text = '---\nname: vvaharness\ndescription: "Operate the vvaharness SAST CLI"\n---\n\n# Body'
-  expect(parseSkill(text, 'x')).toEqual({ name: 'vvaharness', description: 'Operate the vvaharness SAST CLI' })
-  expect(parseSkill('# no front matter', 'typegen')).toEqual({ name: 'typegen', description: '' })
 })
 
 test('ages', () => {

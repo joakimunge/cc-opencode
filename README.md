@@ -7,7 +7,7 @@ Two plugins, install either or both:
 | Plugin | What it draws |
 |---|---|
 | **opencode-look** | Your messages in a block with an accent bar · replies with coloured **bold**, *italics*, `code`, list numbers and headings · a gutter so everything breathes · `▣  Done · Opus 5.5 · 27.5s` after each turn · `Claude · Opus 5.5 · xhigh` under the prompt |
-| **toolbox** | A side pane like OpenCode's sidebar: the folder as title · **Context** (tokens, % used, $ spent) · **Pulse** timer and hours · **Next up** from Google Calendar · **MCP** servers and their status · **Skills** · folder and Claude Code version at the bottom |
+| **toolbox** | A side pane like OpenCode's sidebar: the folder as title · **Context** (tokens, % used, $ spent) · **Pulse** timer and hours · **Next up** from Google Calendar · **MCP** servers and their status · open Claude **Sessions** and what each is doing · folder and Claude Code version at the bottom |
 
 ## Install
 
