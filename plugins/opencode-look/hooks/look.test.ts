@@ -98,14 +98,29 @@ test('the turn ends with ▣ word · model · time, the prompt hint with model a
   expect(await hint.find({ type: 'Text', text: /^xhigh$/ })).toMatchObject({ props: { bold: true } })
 })
 
-test("the engine's own rows are moved in to line up with replies", async ($, on) => {
+test('a finished reply keeps the place the engine streamed it in: ⏺ at column 0, text from column 2', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  const first = await $.ui.mount({
+    plugin: 'opencode-look', surface: 'terminal', component: 'AssistantMessage',
+    props: { text: 'hello', isFirstOfReply: true },
+  })
+  expect(await first.find({ key: 'bullet' })).toMatchObject({ props: { width: 2 } })
+  expect(await first.find({ type: 'Text', text: /^⏺$/ })).toBeDefined()
+  const later = await $.ui.mount({
+    plugin: 'opencode-look', surface: 'terminal', component: 'AssistantMessage',
+    props: { text: 'more', isFirstOfReply: false },
+  })
+  expect(await later.find({ type: 'Text', text: /^⏺$/ })).toBeUndefined()
+})
+
+test("the engine's own rows line up with replies and keep off the right edge", async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   on('ui.render', { component: 'Spinner' }, () => ({ type: 'Text', props: {}, children: ['Thinking…'] }) as never)
   const ui = await $.ui.mount({
     plugin: 'opencode-look', surface: 'terminal', component: 'Spinner',
     props: { word: 'Thinking', message: null, suffix: '', mode: 'thinking' },
   })
-  expect(await ui.drawn()).toMatchObject({ type: 'Box', props: { paddingLeft: 4, paddingRight: 3 } })
+  expect(await ui.drawn()).toMatchObject({ type: 'Box', props: { paddingLeft: 0, paddingRight: 3 } })
   expect(await ui.find({ type: 'Text', text: /^Thinking…$/ })).toBeDefined()
 })
 

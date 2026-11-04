@@ -7,8 +7,10 @@
 //    list numbers and headings each in their role's colour; code blocks and tables are left to the engine's Markdown
 //  - the end of a turn: "▣  Done · Opus 5.5 · 27.5s"
 //  - under the prompt: "Claude · Opus 5.5 · xhigh", then the engine's hint
-//  - padding: a gutter of GUTTER columns on both sides; your text, replies and the footer line up at TEXT;
-//    tool calls, command output, notices and the spinner are inset to match
+//  - padding: your message sits in a gutter of GUTTER columns on both sides, its text at TEXT; replies, tool calls,
+//    command output, notices, the spinner and the footer line up at REPLY, where the engine draws a reply while it
+//    streams (no hook sees streaming text), and replies wrap at the full width as the engine's streaming text does,
+//    so a reply neither jumps sideways nor reflows when it finishes and the mod redraws it
 import type { EngineInterface, Register, RenderElement, RenderInput } from 'claude-code'
 import { blocks, modelName, seconds } from './markdown'
 import type { Block, Span } from './markdown'
@@ -37,8 +39,12 @@ const TYPED = new Set(['composer', 'bridge', 'unclassified'])
 const GUTTER = 3
 /** columns between the bar and your text, and after your text */
 const ROOM = 2
-/** where text starts: the gutter, the bar, then room after it */
+/** where your message's text starts: the gutter, the bar, then room after it */
 const TEXT = GUTTER + 1 + ROOM
+/** where a reply's text starts: the engine streams it here, after its ⏺ bullet and a space */
+const REPLY = 2
+/** the bullet the engine draws before a streaming reply, kept so the finished one looks the same */
+const BULLET = '⏺'
 
 type Elements = ReturnType<EngineInterface['ui']['resolve']>
 
@@ -119,11 +125,11 @@ function block(ui: Elements, b: Block, i: number) {
   }
 }
 
-/** an engine-drawn row, moved in by the gutter and the bar's width */
+/** an engine-drawn row (its own bullet first), lined up with replies and kept off the right edge */
 async function inset($: EngineInterface, e: RenderInput, tree: RenderElement): Promise<RenderElement> {
   if (e.surface !== 'terminal' || !tree) return tree
   const { Box } = $.ui.resolve(e)
-  return <Box flexDirection="column" paddingLeft={TEXT - 2} paddingRight={GUTTER}>{tree}</Box>
+  return <Box flexDirection="column" paddingLeft={REPLY - 2} paddingRight={GUTTER}>{tree}</Box>
 }
 
 export const register: Register = (on) => {
@@ -149,10 +155,17 @@ export const register: Register = (on) => {
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
     const ui = $.ui.resolve(e)
-    const { Box } = ui
+    const { Box, Text } = ui
     return (
-      <Box flexDirection="column" paddingLeft={TEXT} paddingRight={GUTTER}>
-        {blocks(e.props.text).map((b, i) => block(ui, b, i))}
+      // no right gutter: the engine wraps streaming text at the full width, and the finished reply has to wrap at the
+      // same column or its words jump between lines when the colours come on
+      <Box flexDirection="row">
+        <Box key="bullet" width={REPLY} flexShrink={0}>
+          {e.props.isFirstOfReply ? <Text>{BULLET}</Text> : null}
+        </Box>
+        <Box key="text" flexDirection="column" flexShrink={1}>
+          {blocks(e.props.text).map((b, i) => block(ui, b, i))}
+        </Box>
       </Box>
     )
   })
@@ -162,7 +175,7 @@ export const register: Register = (on) => {
     const { Box, Text } = $.ui.resolve(e)
     const { model } = await modelLabel($)
     return (
-      <Box paddingLeft={TEXT} paddingRight={GUTTER} marginTop={1}>
+      <Box paddingLeft={REPLY} paddingRight={GUTTER} marginTop={1}>
         <Text>
           <Text color={ACCENT}>▣  </Text>
           <Text>{e.props.word || 'Done'}</Text>
